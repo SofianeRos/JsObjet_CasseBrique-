@@ -44,18 +44,15 @@ class Game
     // Contexte de dessin du canvas
     ctx;
 
-    // Elements HTML pour le score et les vies
+    // Elements HTML
     elScore;
     elLives;
+    elLevel; // Nouvel affichage pour le niveau
 
-    // Timestamp haute résolution de la boucle d'animation 
     currentLoopStamp;
-
-    // <span> de débug
     debugSpan;
     debugInfo = '';
 
-    // Images
     images = {
         ball: null,
         paddle: null,
@@ -63,21 +60,15 @@ class Game
         edge: null
     };
 
-    // State (un objet qui décrit l'état actuel du jeu, les balles, les briques encore présentes, etc.)
     state = {
         score: 0, 
-        lives: 3, 
-        // Balles (plusieurs car possible multiball)
+        lives: 3,
+        currentLevelIndex: 0, // <--- On suit le niveau actuel ici
         balls: [],
-        // Briques
         bricks: [],
-        // Bordure de la mort
         deathEdge: null,
-        // Bordures à rebond
         bouncingEdges: [],
-        // Paddle
         paddle: null,
-        // Entrées utilisateur
         userInput: {
             paddleLeft: false,
             paddleRight: false
@@ -85,30 +76,23 @@ class Game
     };
 
     constructor( customConfig = {}, levelsConfig = [] ) {
-        // Object.assign() permet de fusionner deux objets littéraux (seulement le premier niveau)
         Object.assign( this.config, customConfig );
-
         this.levels = levelsConfig;
     }
 
     start() {
         console.log('Jeu démarré ...');
-        // Initialisation de l'interface HTML
         this.initHtmlUI();
-        // Initialisation des images
         this.initImages();
-        // Initialisation des objets du jeu
         this.initGameObjects();
-        // Lancement de la boucle
         requestAnimationFrame( this.loop.bind(this) );
     }
 
-    // Méthodes "privées"
     initHtmlUI() {
         const elH1 = document.createElement('h1');
         elH1.textContent = 'Arkanoïd';
 
-        // --- BARRE D'INFO (Score / Vies) ---
+        // Barre d'info
         const infoBar = document.createElement('div');
         infoBar.style.display = 'flex';
         infoBar.style.justifyContent = 'space-between';
@@ -120,50 +104,36 @@ class Game
         this.elLives = document.createElement('span');
         this.elLives.textContent = `Vies: ${this.state.lives}`;
         
+        // Affichage du Niveau
+        this.elLevel = document.createElement('span');
+        this.elLevel.textContent = `Niveau: ${this.state.currentLevelIndex + 1}`;
+
         this.elScore = document.createElement('span');
         this.elScore.textContent = `Score: ${this.state.score}`;
 
-        infoBar.append(this.elLives, this.elScore);
-        // -----------------------------------
+        infoBar.append(this.elLives, this.elLevel, this.elScore);
 
         const elCanvas = document.createElement( 'canvas' );
         elCanvas.width = this.config.canvasSize.width;
         elCanvas.height = this.config.canvasSize.height;
 
-        // Débug box
         this.debugSpan = document.createElement( 'span' );
         
-        // Ajout des éléments au DOM
         document.body.append( elH1, infoBar, elCanvas, this.debugSpan );
 
-        // Récupération du contexte de dessin
         this.ctx = elCanvas.getContext('2d');
 
-        // Écouteur d'évènements du clavier
         document.addEventListener( 'keydown', this.handlerKeyboard.bind(this, true) );
         document.addEventListener( 'keyup', this.handlerKeyboard.bind(this, false) );
     }
 
-    // Création des images
     initImages() {
-        const imgBall = new Image();
-        imgBall.src = ballImgSrc;
-        this.images.ball = imgBall;
-
-        const imgPaddle = new Image();
-        imgPaddle.src = paddleImgSrc;
-        this.images.paddle = imgPaddle;
-
-        const imgBrick = new Image();
-        imgBrick.src = brickImgSrc;
-        this.images.brick = imgBrick;
-
-        const imgEdge = new Image();
-        imgEdge.src = edgeImgSrc;
-        this.images.edge = imgEdge;
+        const imgBall = new Image(); imgBall.src = ballImgSrc; this.images.ball = imgBall;
+        const imgPaddle = new Image(); imgPaddle.src = paddleImgSrc; this.images.paddle = imgPaddle;
+        const imgBrick = new Image(); imgBrick.src = brickImgSrc; this.images.brick = imgBrick;
+        const imgEdge = new Image(); imgEdge.src = edgeImgSrc; this.images.edge = imgEdge;
     }
 
-    // Méthode pour faire apparaître une balle (utilisée au début et après une mort)
     spawnBall() {
         const ballDiamater = this.config.ball.radius * 2;
         const ball = new Ball(
@@ -178,58 +148,58 @@ class Game
         );
         ball.isCircular = true;
         
-        // On réinitialise le tableau de balles
         this.state.balls = [ ball ];
     }
 
-    // Mise en place des objets du jeu sur la scene
+    // Passage au niveau suivant
+    nextLevel() {
+        // On incrémente l'index
+        this.state.currentLevelIndex++;
+
+        // Vérification Victoire Globale (si on dépasse le nombre de niveaux dispo)
+        if (this.state.currentLevelIndex >= this.levels.data.length) {
+            alert("FÉLICITATIONS ! VOUS AVEZ FINI TOUS LES NIVEAUX ! Score Final : " + this.state.score);
+            window.location.reload();
+            return;
+        }
+
+        // Sinon, on charge le niveau suivant
+        console.log("Chargement du niveau " + (this.state.currentLevelIndex + 1));
+        
+        // Mise à jour affichage HTML
+        this.elLevel.textContent = `Niveau: ${this.state.currentLevelIndex + 1}`;
+
+        // On vide les briques et les balles actuelles
+        this.state.bricks = [];
+        this.state.balls = [];
+
+        // On remet la balle en place
+        this.spawnBall();
+        
+        // On charge les nouvelles briques
+        this.loadBricks(this.levels.data[this.state.currentLevelIndex]);
+    }
+
     initGameObjects() {
-        // Balle
         this.spawnBall();
 
-        // Bordure de la mort
-        const deathEdge = new GameObject(
-            this.images.edge,
-            this.config.canvasSize.width,
-            20
-        );
-        deathEdge.setPosition(
-            0,
-            this.config.canvasSize.height + 30
-        );
+        // Death Edge
+        const deathEdge = new GameObject(this.images.edge, this.config.canvasSize.width, 20);
+        deathEdge.setPosition(0, this.config.canvasSize.height + 30);
         this.state.deathEdge = deathEdge;
 
-        // -- Bordures à rebond
-        // Haut
-        const edgeTop = new GameObject(
-            this.images.edge,
-            this.config.canvasSize.width,
-            20
-        );
+        // Bouncing Edges
+        const edgeTop = new GameObject(this.images.edge, this.config.canvasSize.width, 20);
         edgeTop.setPosition(0, 0);
 
-        // Droite
-        const edgeRight = new GameObject(
-            this.images.edge,
-            20,
-            this.config.canvasSize.height + 10
-        );
-        edgeRight.setPosition(
-            this.config.canvasSize.width - 20,
-            20
-        );
+        const edgeRight = new GameObject(this.images.edge, 20, this.config.canvasSize.height + 10);
+        edgeRight.setPosition(this.config.canvasSize.width - 20, 20);
         edgeRight.tag = 'RightEdge';
 
-        // Gauche
-        const edgeLeft = new GameObject(
-            this.images.edge,
-            20,
-            this.config.canvasSize.height + 10
-        );
+        const edgeLeft = new GameObject(this.images.edge, 20, this.config.canvasSize.height + 10);
         edgeLeft.setPosition(0, 20);
         edgeLeft.tag = 'LeftEdge';
 
-        // Ajout dans la liste des bords
         this.state.bouncingEdges.push(edgeTop, edgeRight, edgeLeft);
 
         // Paddle
@@ -246,36 +216,27 @@ class Game
         );
         this.state.paddle = paddle;
 
-        // Chargement de briques
-        this.loadBricks(this.levels.data[0]);
+        // Chargement initial du niveau correspondant à l'index (0 au début)
+        this.loadBricks(this.levels.data[this.state.currentLevelIndex]);
     }
 
-    // Création des briques
     loadBricks( levelArray ) {
-        // Lignes
         for( let line = 0; line < levelArray.length; line ++ ) {
-            // Colonnes
             for( let column = 0; column < levelArray[line].length; column ++ ) {
                 let brickType = levelArray[line][column];
-                // Si la valeur trouvée est 0, c'est un espace vide
                 if( brickType == 0 ) continue;
 
-                // Création de la brique
                 const brick = new Brick( this.images.brick, 50, 25, brickType );
                 brick.setPosition(
                     20 + (50 * column),
                     20 + (25 * line)
                 );
-
                 this.state.bricks.push( brick );
             }
         }
     }
 
-
-    // Cycle de vie: 1- Entrées Utilisateur
     checkUserInput() {
-        // -- Paddle
         if( this.state.userInput.paddleRight ) {
             this.state.paddle.orientation = 0;
             this.state.paddle.speed = 7;
@@ -287,113 +248,63 @@ class Game
         if( ! this.state.userInput.paddleRight && ! this.state.userInput.paddleLeft ) {
             this.state.paddle.speed = 0;
         }
-
         this.state.paddle.update();
     }
 
-    // Cycle de vie: 2- Collisions et calculs qui en découlent
     checkCollisions() {
-
-        // Collisions du paddle avec les bords
         this.state.bouncingEdges.forEach( theEdge => {
             const collisionType = this.state.paddle.getCollisionType( theEdge );
-
             if( collisionType !== CollisionType.HORIZONTAL ) return;
-
             this.state.paddle.speed = 0;
-
             const edgeBounds = theEdge.getBounds();
-
             if( theEdge.tag === "RightEdge" ) {
                 this.state.paddle.position.x = edgeBounds.left - 1 - this.state.paddle.size.width;
-            }
-            else if( theEdge.tag === "LeftEdge" ) {
+            } else if( theEdge.tag === "LeftEdge" ) {
                 this.state.paddle.position.x = edgeBounds.right + 1;
             }
-
             this.state.paddle.update();
         });
 
-        // Collisions des balles avec tous les objets
         const savedBalls = [];
 
         this.state.balls.forEach( theBall => {
-            
-            // Collision de la balle avec le bord de la mort
-            if( theBall.getCollisionType( this.state.deathEdge ) !== CollisionType.NONE ) {
-                return;
-            }
-
+            if( theBall.getCollisionType( this.state.deathEdge ) !== CollisionType.NONE ) return;
             savedBalls.push( theBall );
 
-            // Collisions de la balle avec les bords rebondissants
             this.state.bouncingEdges.forEach( theEdge => {
                 const collisionType = theBall.getCollisionType( theEdge );
-
                 switch( collisionType ) {
                     case CollisionType.NONE: return;
                     case CollisionType.HORIZONTAL: theBall.reverseOrientationX(); break;
                     case CollisionType.VERTICAL: theBall.reverseOrientationY(); break;
-                    default: break;
                 }
             });
 
-            // Collisions de la balle avec les briques
             this.state.bricks.forEach( theBrick => {
                 const collisionType = theBall.getCollisionType( theBrick );
-
                 switch( collisionType ) {
-                    case CollisionType.NONE:
-                        return;
-
-                    case CollisionType.HORIZONTAL:
-                        theBall.reverseOrientationX();
-                        break;
-
-                    case CollisionType.VERTICAL:
-                        theBall.reverseOrientationY();
-                        break;
-
-                    default:
-                        break;
+                    case CollisionType.NONE: return;
+                    case CollisionType.HORIZONTAL: theBall.reverseOrientationX(); break;
+                    case CollisionType.VERTICAL: theBall.reverseOrientationY(); break;
                 }
 
-                // --- GESTION BRIQUE INCASSABLE ---
-                // Si la brique est incassable, on s'arrête là.
-                // Le rebond a déjà eu lieu dans le switch.
-                if (theBrick.isUnbreakable) {
-                    return; 
-                }
+                if (theBrick.isUnbreakable) return;
 
-                // Sinon, on détruit et on compte les points
                 theBrick.strength --;
-                
                 this.state.score += 10;
                 this.elScore.textContent = `Score: ${this.state.score}`;
             });
 
-            // Collision avec le paddle
             const paddleCollisionType = theBall.getCollisionType( this.state.paddle );
             switch( paddleCollisionType ) {
-                case CollisionType.HORIZONTAL:
-                    theBall.reverseOrientationX();
-                    break;
-
+                case CollisionType.HORIZONTAL: theBall.reverseOrientationX(); break;
                 case CollisionType.VERTICAL:
                     let alteration = 0;
-                    if( this.state.userInput.paddleRight )
-                        alteration = -1 * this.config.ball.angleAlteration;
-                    else if( this.state.userInput.paddleLeft )
-                        alteration = this.config.ball.angleAlteration;
-
+                    if( this.state.userInput.paddleRight ) alteration = -1 * this.config.ball.angleAlteration;
+                    else if( this.state.userInput.paddleLeft ) alteration = this.config.ball.angleAlteration;
                     theBall.reverseOrientationY(alteration);
-                    
                     if( theBall.orientation === 0 ) theBall.orientation = 10;
                     else if( theBall.orientation === 180 ) theBall.orientation = 170;
-
-                    break;
-
-                default:
                     break;
             }
         });
@@ -401,58 +312,47 @@ class Game
         this.state.balls = savedBalls;
     }
 
-    // Cycle de vie: 3- Mise à jours des données des GameObjects
     updateObjects() {
-        // Balles
-        this.state.balls.forEach( theBall => {
-            theBall.update();
-        });
+        this.state.balls.forEach( theBall => theBall.update() );
 
-        // Briques : On supprime celles qui ont 0 PV
+        // Nettoyage des briques détruites
         this.state.bricks = this.state.bricks.filter( theBrick => theBrick.strength !== 0 );
-    
-        // Paddle
+        
         this.state.paddle.updateKeyframe();
+
+        // --- VERIFICATION DE LA FIN DU NIVEAU ---
+        // On compte combien de briques destructibles il reste
+        const destructibleBricksLeft = this.state.bricks.filter( b => !b.isUnbreakable ).length;
+
+        // S'il n'en reste aucune, on passe au niveau suivant
+        if (destructibleBricksLeft === 0) {
+            this.nextLevel();
+        }
     }
 
-    // Cycle de vie: 4- Rendu graphique des GameObjects
     renderObjects() {
-        this.ctx.clearRect(
-            0,
-            0,
-            this.config.canvasSize.width,
-            this.config.canvasSize.height
-        );
-
+        this.ctx.clearRect(0, 0, this.config.canvasSize.width, this.config.canvasSize.height);
         this.state.bouncingEdges.forEach( theEdge => theEdge.draw() );
         this.state.bricks.forEach( theBrick => theBrick.draw() );
         this.state.paddle.draw();
         this.state.balls.forEach( theBall => theBall.draw() );
     }
 
-    // Boucle d'animation
     loop(stamp) {
         this.currentLoopStamp = stamp;
-        
         this.checkUserInput();
         this.checkCollisions();
         this.updateObjects();
         this.renderObjects();
 
-        // --- GESTION DU GAME OVER / RESPAWN ---
         if( this.state.balls.length <= 0 ) {
-            
             this.state.lives --;
             this.elLives.textContent = `Vies: ${this.state.lives}`;
             
             if (this.state.lives > 0) {
-                 // Encore des vies : on relance
                  this.spawnBall();
             } else {
-                // Plus de vies : Game Over
-                console.log( "Game Over !!!");
                 alert("Game Over ! Score final : " + this.state.score);
-                // On recharge la page pour recommencer (simple et efficace)
                 window.location.reload();
                 return;
             }
@@ -461,26 +361,21 @@ class Game
         requestAnimationFrame( this.loop.bind(this) );
     }
 
-    // debug info
     addDebugInfo( label, value ) {
         this.debugInfo += label + ': ' + value + '<br>';
     }
 
-    // Gestionnaires d'événement DOM
     handlerKeyboard( isActive, evt ) {
         if( evt.key === 'Right' || evt.key === 'ArrowRight' ) {
-            if( isActive && this.state.userInput.paddleLeft )
-                this.state.userInput.paddleLeft = false;
+            if( isActive && this.state.userInput.paddleLeft ) this.state.userInput.paddleLeft = false;
             this.state.userInput.paddleRight = isActive;
         }
         else if( evt.key === 'Left' || evt.key === 'ArrowLeft' ) {
-            if( isActive && this.state.userInput.paddleRight )
-                this.state.userInput.paddleRight = false;
+            if( isActive && this.state.userInput.paddleRight ) this.state.userInput.paddleRight = false;
             this.state.userInput.paddleLeft = isActive;
         }
     }
 }
 
 const theGame = new Game(customConfig, levelsConfig);
-
 export default theGame;
