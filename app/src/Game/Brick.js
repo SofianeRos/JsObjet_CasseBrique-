@@ -45,7 +45,7 @@ export default class Brick extends GameObject
             theGame.ctx.save();
             
             // Couleur noire avec 60% d'opacité
-            theGame.ctx.fillStyle = "rgba(0, 0, 0, 0.6)"; 
+            theGame.ctx.fillStyle = "rgba(0, 0, 0, 0.38)"; 
             theGame.ctx.fillRect(
                 this.position.x,
                 this.position.y,
