@@ -58,7 +58,7 @@ class Game
     }
 
     initHtmlUI() {
-        const elH1 = document.createElement('h1'); elH1.textContent = 'Arkanoïd Ultra';
+        const elH1 = document.createElement('h1'); elH1.textContent = 'Arkanoïd';
         // Style modifié pour aller avec le thème sombre
         elH1.style.color = '#fff';
         elH1.style.textShadow = '0 0 10px #0ff';

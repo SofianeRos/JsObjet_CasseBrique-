@@ -71,7 +71,6 @@ export default class Paddle extends MovingObject
     }
 
     updateKeyframe() {
-        // Animation inutile maintenant qu'on dessine en code, 
-        // mais on garde la méthode pour ne pas casser Game.js
+      
     }
 }

@@ -13,7 +13,7 @@ export default class Brick extends GameObject
         // Si la force est 3, c'est une brique incassable
         if (strength === 3) {
             this.isUnbreakable = true;
-            // On la fait ressembler à une brique de base (Jaune) pour l'image de fond
+            // On la fait ressembler à une brique de base  pour l'image de fond
             this.strength = 1; 
             this.type = 1;     
         } else {
