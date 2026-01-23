@@ -53,7 +53,7 @@ export default class Brick extends GameObject
                 this.size.height
             );
 
-            // Optionnel : On peut ajouter un petit contour gris pour faire "métal"
+            //  On peut ajouter un petit contour gris pour faire "métal"
             theGame.ctx.strokeStyle = "#888"; 
             theGame.ctx.lineWidth = 2;
             theGame.ctx.strokeRect(

@@ -1,9 +1,7 @@
 // Import de la feuille de style
 import '../assets/css/style.css';
-// Import des données de configuration
 import customConfig from '../config.json';
 import levelsConfig from '../levels.json';
-// Import des assets de sprite
 import ballImgSrc from '../assets/img/ball.png';
 import paddleImgSrc from '../assets/img/paddle.png';
 import brickImgSrc from '../assets/img/brick.png';
@@ -13,66 +11,38 @@ import GameObject from './GameObject';
 import CollisionType from './DataType/CollisionType';
 import Paddle from './Paddle';
 import Brick from './Brick';
+import Bonus from './Bonus';
+import Projectile from './Projectile';
 
 class Game
 {
     config = {
-        canvasSize: {
-            width: 800,
-            height: 600
-        },
-        ball: {
-            radius: 10,
-            orientation: 45,
-            speed: 3,
-            position: {
-                x: 400,
-                y: 300
-            },
-            angleAlteration: 30
-        },
-        paddleSize: {
-            width: 100,
-            height: 20
-        }
-
+        canvasSize: { width: 800, height: 600 },
+        ball: { radius: 10, orientation: 45, speed: 4, position: { x: 400, y: 300 }, angleAlteration: 30 },
+        paddleSize: { width: 100, height: 20 }
     };
     
-    // Données des niveaux
     levels;
-
-    // Contexte de dessin du canvas
     ctx;
-
-    // Elements HTML
-    elScore;
-    elLives;
-    elLevel; // Nouvel affichage pour le niveau
-
+    elScore; elLives; elLevel;
+    
+    //  Compteur d'images pour gérer le rythme 
+    frameCount = 0;
+    
     currentLoopStamp;
-    debugSpan;
-    debugInfo = '';
+    debugSpan; debugInfo = '';
 
-    images = {
-        ball: null,
-        paddle: null,
-        brick: null,
-        edge: null
-    };
+    images = { ball: null, paddle: null, brick: null, edge: null };
 
     state = {
-        score: 0, 
-        lives: 3,
-        currentLevelIndex: 0, // <--- On suit le niveau actuel ici
+        score: 0, lives: 3, currentLevelIndex: 0,
         balls: [],
         bricks: [],
-        deathEdge: null,
-        bouncingEdges: [],
+        bonuses: [],
+        projectiles: [],
+        deathEdge: null, bouncingEdges: [],
         paddle: null,
-        userInput: {
-            paddleLeft: false,
-            paddleRight: false
-        }
+        userInput: { paddleLeft: false, paddleRight: false, space: false }
     };
 
     constructor( customConfig = {}, levelsConfig = [] ) {
@@ -81,7 +51,6 @@ class Game
     }
 
     start() {
-        console.log('Jeu démarré ...');
         this.initHtmlUI();
         this.initImages();
         this.initGameObjects();
@@ -89,38 +58,19 @@ class Game
     }
 
     initHtmlUI() {
-        const elH1 = document.createElement('h1');
-        elH1.textContent = 'Arkanoïd';
-
-        // Barre d'info
+        const elH1 = document.createElement('h1'); elH1.textContent = 'Arkanoïd Ultra';
         const infoBar = document.createElement('div');
-        infoBar.style.display = 'flex';
-        infoBar.style.justifyContent = 'space-between';
-        infoBar.style.width = this.config.canvasSize.width + 'px';
-        infoBar.style.marginBottom = '10px';
-        infoBar.style.fontFamily = 'sans-serif';
-        infoBar.style.fontWeight = 'bold';
-
-        this.elLives = document.createElement('span');
-        this.elLives.textContent = `Vies: ${this.state.lives}`;
+        infoBar.style.display = 'flex'; infoBar.style.justifyContent = 'space-between'; infoBar.style.width = '800px'; infoBar.style.fontWeight = 'bold';
         
-        // Affichage du Niveau
-        this.elLevel = document.createElement('span');
-        this.elLevel.textContent = `Niveau: ${this.state.currentLevelIndex + 1}`;
-
-        this.elScore = document.createElement('span');
-        this.elScore.textContent = `Score: ${this.state.score}`;
-
+        this.elLives = document.createElement('span'); this.elLives.textContent = `Vies: ${this.state.lives}`;
+        this.elLevel = document.createElement('span'); this.elLevel.textContent = `Niveau: ${this.state.currentLevelIndex + 1}`;
+        this.elScore = document.createElement('span'); this.elScore.textContent = `Score: ${this.state.score}`;
         infoBar.append(this.elLives, this.elLevel, this.elScore);
 
         const elCanvas = document.createElement( 'canvas' );
-        elCanvas.width = this.config.canvasSize.width;
-        elCanvas.height = this.config.canvasSize.height;
-
+        elCanvas.width = this.config.canvasSize.width; elCanvas.height = this.config.canvasSize.height;
         this.debugSpan = document.createElement( 'span' );
-        
         document.body.append( elH1, infoBar, elCanvas, this.debugSpan );
-
         this.ctx = elCanvas.getContext('2d');
 
         document.addEventListener( 'keydown', this.handlerKeyboard.bind(this, true) );
@@ -128,251 +78,272 @@ class Game
     }
 
     initImages() {
-        const imgBall = new Image(); imgBall.src = ballImgSrc; this.images.ball = imgBall;
-        const imgPaddle = new Image(); imgPaddle.src = paddleImgSrc; this.images.paddle = imgPaddle;
-        const imgBrick = new Image(); imgBrick.src = brickImgSrc; this.images.brick = imgBrick;
-        const imgEdge = new Image(); imgEdge.src = edgeImgSrc; this.images.edge = imgEdge;
+        const i = this.images;
+        i.ball = new Image(); i.ball.src = ballImgSrc;
+        i.paddle = new Image(); i.paddle.src = paddleImgSrc;
+        i.brick = new Image(); i.brick.src = brickImgSrc;
+        i.edge = new Image(); i.edge.src = edgeImgSrc;
     }
 
-    spawnBall() {
-        const ballDiamater = this.config.ball.radius * 2;
-        const ball = new Ball(
-            this.images.ball,
-            ballDiamater, ballDiamater,
-            this.config.ball.orientation,
-            this.config.ball.speed
-        );
-        ball.setPosition(
-            this.config.ball.position.x,
-            this.config.ball.position.y
-        );
+    spawnBall(addToExisting = false) {
+        const d = this.config.ball.radius * 2;
+        let angle = Math.floor(Math.random() * (135 - 45 + 1) + 45);
+
+        const ball = new Ball(this.images.ball, d, d, angle, this.config.ball.speed);
+        
+        if (addToExisting && this.state.paddle) {
+             ball.setPosition(this.state.paddle.position.x + 20, this.state.paddle.position.y - 20);
+        } else {
+             ball.setPosition(this.config.ball.position.x, this.config.ball.position.y);
+        }
         ball.isCircular = true;
         
-        this.state.balls = [ ball ];
-    }
-
-    // Passage au niveau suivant
-    nextLevel() {
-        // On incrémente l'index
-        this.state.currentLevelIndex++;
-
-        // Vérification Victoire Globale (si on dépasse le nombre de niveaux dispo)
-        if (this.state.currentLevelIndex >= this.levels.data.length) {
-            alert("FÉLICITATIONS ! VOUS AVEZ FINI TOUS LES NIVEAUX ! Score Final : " + this.state.score);
-            window.location.reload();
-            return;
-        }
-
-        // Sinon, on charge le niveau suivant
-        console.log("Chargement du niveau " + (this.state.currentLevelIndex + 1));
-        
-        // Mise à jour affichage HTML
-        this.elLevel.textContent = `Niveau: ${this.state.currentLevelIndex + 1}`;
-
-        // On vide les briques et les balles actuelles
-        this.state.bricks = [];
-        this.state.balls = [];
-
-        // On remet la balle en place
-        this.spawnBall();
-        
-        // On charge les nouvelles briques
-        this.loadBricks(this.levels.data[this.state.currentLevelIndex]);
+        if (addToExisting) this.state.balls.push(ball);
+        else this.state.balls = [ ball ];
     }
 
     initGameObjects() {
         this.spawnBall();
+        const de = new GameObject(this.images.edge, 800, 20); de.setPosition(0, 630); this.state.deathEdge = de;
+        const et = new GameObject(this.images.edge, 800, 20); et.setPosition(0, 0);
+        const er = new GameObject(this.images.edge, 20, 610); er.setPosition(780, 20); er.tag = 'RightEdge';
+        const el = new GameObject(this.images.edge, 20, 610); el.setPosition(0, 20); el.tag = 'LeftEdge';
+        this.state.bouncingEdges.push(et, er, el);
 
-        // Death Edge
-        const deathEdge = new GameObject(this.images.edge, this.config.canvasSize.width, 20);
-        deathEdge.setPosition(0, this.config.canvasSize.height + 30);
-        this.state.deathEdge = deathEdge;
-
-        // Bouncing Edges
-        const edgeTop = new GameObject(this.images.edge, this.config.canvasSize.width, 20);
-        edgeTop.setPosition(0, 0);
-
-        const edgeRight = new GameObject(this.images.edge, 20, this.config.canvasSize.height + 10);
-        edgeRight.setPosition(this.config.canvasSize.width - 20, 20);
-        edgeRight.tag = 'RightEdge';
-
-        const edgeLeft = new GameObject(this.images.edge, 20, this.config.canvasSize.height + 10);
-        edgeLeft.setPosition(0, 20);
-        edgeLeft.tag = 'LeftEdge';
-
-        this.state.bouncingEdges.push(edgeTop, edgeRight, edgeLeft);
-
-        // Paddle
-        const paddle = new Paddle(
-            this.images.paddle,
-            this.config.paddleSize.width,
-            this.config.paddleSize.height,
-            0,
-            0
-        );
-        paddle.setPosition(
-            (this.config.canvasSize.width / 2) - ( this.config.paddleSize.width / 2),
-            this.config.canvasSize.height - this.config.paddleSize.height - 20
-        );
-        this.state.paddle = paddle;
-
-        // Chargement initial du niveau correspondant à l'index (0 au début)
+        const p = new Paddle(this.images.paddle, this.config.paddleSize.width, this.config.paddleSize.height, 0, 0);
+        p.setPosition(350, 550);
+        this.state.paddle = p;
         this.loadBricks(this.levels.data[this.state.currentLevelIndex]);
     }
 
-    loadBricks( levelArray ) {
-        for( let line = 0; line < levelArray.length; line ++ ) {
-            for( let column = 0; column < levelArray[line].length; column ++ ) {
-                let brickType = levelArray[line][column];
-                if( brickType == 0 ) continue;
-
-                const brick = new Brick( this.images.brick, 50, 25, brickType );
-                brick.setPosition(
-                    20 + (50 * column),
-                    20 + (25 * line)
-                );
-                this.state.bricks.push( brick );
+    loadBricks(arr) {
+        for(let l=0; l<arr.length; l++) {
+            for(let c=0; c<arr[l].length; c++) {
+                if(arr[l][c]!==0) {
+                    const b = new Brick(this.images.brick, 50, 25, arr[l][c]);
+                    b.setPosition(20 + (50 * c), 20 + (25 * l));
+                    this.state.bricks.push(b);
+                }
             }
         }
     }
 
+    activateBonus(bonus) {
+        this.state.score += 50; 
+        this.elScore.textContent = `Score: ${this.state.score}`;
+
+        switch(bonus.type) {
+            case 'MULTI':
+                this.spawnBall(true); this.spawnBall(true);
+                break;
+            case 'BIG':
+                this.state.paddle.setWidth(1.5);
+                break;
+            case 'SMALL':
+                this.state.paddle.setWidth(0.7);
+                break;
+            case 'STICKY':
+                this.state.paddle.isSticky = true;
+                this.state.paddle.hasLaser = false;
+                break;
+            case 'LASER':
+                this.state.paddle.hasLaser = true;
+                this.state.paddle.isSticky = false;
+                break;
+            case 'PENETRATING':
+                this.state.balls.forEach(b => { b.isPenetrating = true; });
+                break;
+        }
+    }
+
     checkUserInput() {
-        if( this.state.userInput.paddleRight ) {
-            this.state.paddle.orientation = 0;
-            this.state.paddle.speed = 7;
-        }
-        if( this.state.userInput.paddleLeft ) {
-            this.state.paddle.orientation = 180;
-            this.state.paddle.speed = 7;
-        }
-        if( ! this.state.userInput.paddleRight && ! this.state.userInput.paddleLeft ) {
-            this.state.paddle.speed = 0;
+        if(this.state.userInput.paddleRight) { this.state.paddle.orientation=0; this.state.paddle.speed=7; }
+        if(this.state.userInput.paddleLeft) { this.state.paddle.orientation=180; this.state.paddle.speed=7; }
+        if(!this.state.userInput.paddleRight && !this.state.userInput.paddleLeft) this.state.paddle.speed=0;
+        
+        if (this.state.userInput.space) {
+            this.state.balls.forEach(b => {
+                if (b.isStuck) {
+                    b.isStuck = false;
+                    b.orientation = 90;
+                }
+            });
+
+            //  On utilise frameCount au lieu du timestamp
+            // Le modulo 10 permet de tirer toutes les 10 frames (environ 6 fois par seconde)
+            if (this.state.paddle.hasLaser && this.frameCount % 10 === 0) {
+                const p1 = new Projectile(this.state.paddle.position.x, this.state.paddle.position.y);
+                const p2 = new Projectile(this.state.paddle.position.x + this.state.paddle.size.width - 4, this.state.paddle.position.y);
+                this.state.projectiles.push(p1, p2);
+            }
         }
         this.state.paddle.update();
     }
 
     checkCollisions() {
-        this.state.bouncingEdges.forEach( theEdge => {
-            const collisionType = this.state.paddle.getCollisionType( theEdge );
-            if( collisionType !== CollisionType.HORIZONTAL ) return;
-            this.state.paddle.speed = 0;
-            const edgeBounds = theEdge.getBounds();
-            if( theEdge.tag === "RightEdge" ) {
-                this.state.paddle.position.x = edgeBounds.left - 1 - this.state.paddle.size.width;
-            } else if( theEdge.tag === "LeftEdge" ) {
-                this.state.paddle.position.x = edgeBounds.right + 1;
+        // Paddle vs Bords
+        this.state.bouncingEdges.forEach(e => {
+            if(this.state.paddle.getCollisionType(e) === CollisionType.HORIZONTAL) {
+                this.state.paddle.speed = 0;
+                const b = e.getBounds();
+                if(e.tag==="RightEdge") this.state.paddle.position.x = b.left - 1 - this.state.paddle.size.width;
+                else this.state.paddle.position.x = b.right + 1;
+                this.state.paddle.update();
             }
-            this.state.paddle.update();
+        });
+
+        // Paddle vs Bonus
+        this.state.bonuses = this.state.bonuses.filter(bonus => {
+            if (this.state.paddle.intersects(bonus)) { 
+                this.activateBonus(bonus);
+                return false; 
+            }
+            return true;
         });
 
         const savedBalls = [];
+        this.state.balls.forEach(ball => {
+            if(ball.getCollisionType(this.state.deathEdge) !== CollisionType.NONE) return;
+            savedBalls.push(ball);
 
-        this.state.balls.forEach( theBall => {
-            if( theBall.getCollisionType( this.state.deathEdge ) !== CollisionType.NONE ) return;
-            savedBalls.push( theBall );
+            if (ball.isStuck) {
+                ball.position.x = this.state.paddle.position.x + ball.stuckOffset;
+                return;
+            }
 
-            this.state.bouncingEdges.forEach( theEdge => {
-                const collisionType = theBall.getCollisionType( theEdge );
-                switch( collisionType ) {
-                    case CollisionType.NONE: return;
-                    case CollisionType.HORIZONTAL: theBall.reverseOrientationX(); break;
-                    case CollisionType.VERTICAL: theBall.reverseOrientationY(); break;
+            this.state.bouncingEdges.forEach(e => {
+                const c = ball.getCollisionType(e);
+                if(c===CollisionType.HORIZONTAL) ball.reverseOrientationX();
+                if(c===CollisionType.VERTICAL) ball.reverseOrientationY();
+            });
+
+            this.state.bricks.forEach(brick => {
+                const c = ball.getCollisionType(brick);
+                if (c !== CollisionType.NONE) {
+                    if (c===CollisionType.HORIZONTAL) ball.reverseOrientationX();
+                    else ball.reverseOrientationY();
+
+                    if(!brick.isUnbreakable) {
+                        if (ball.isPenetrating) brick.strength = 0;
+                        else brick.strength --;
+
+                        this.state.score += 10;
+                        this.elScore.textContent = `Score: ${this.state.score}`;
+
+                        if (brick.strength === 0 && Math.random() < 0.20) {
+                            const bonus = new Bonus(brick.position.x + 10, brick.position.y);
+                            this.state.bonuses.push(bonus);
+                        }
+                    }
                 }
             });
 
-            this.state.bricks.forEach( theBrick => {
-                const collisionType = theBall.getCollisionType( theBrick );
-                switch( collisionType ) {
-                    case CollisionType.NONE: return;
-                    case CollisionType.HORIZONTAL: theBall.reverseOrientationX(); break;
-                    case CollisionType.VERTICAL: theBall.reverseOrientationY(); break;
+            const pc = ball.getCollisionType(this.state.paddle);
+            if(pc !== CollisionType.NONE) {
+                if (this.state.paddle.isSticky) {
+                    ball.isStuck = true;
+                    ball.stuckOffset = ball.position.x - this.state.paddle.position.x;
+                } else {
+                    if(pc===CollisionType.HORIZONTAL) ball.reverseOrientationX();
+                    else {
+                        let alt = 0;
+                        if(this.state.userInput.paddleRight) alt = -30;
+                        else if(this.state.userInput.paddleLeft) alt = 30;
+                        ball.reverseOrientationY(alt);
+                        if( ball.orientation === 0 ) ball.orientation = 10;
+                        else if( ball.orientation === 180 ) ball.orientation = 170;
+                    }
                 }
-
-                if (theBrick.isUnbreakable) return;
-
-                theBrick.strength --;
-                this.state.score += 10;
-                this.elScore.textContent = `Score: ${this.state.score}`;
-            });
-
-            const paddleCollisionType = theBall.getCollisionType( this.state.paddle );
-            switch( paddleCollisionType ) {
-                case CollisionType.HORIZONTAL: theBall.reverseOrientationX(); break;
-                case CollisionType.VERTICAL:
-                    let alteration = 0;
-                    if( this.state.userInput.paddleRight ) alteration = -1 * this.config.ball.angleAlteration;
-                    else if( this.state.userInput.paddleLeft ) alteration = this.config.ball.angleAlteration;
-                    theBall.reverseOrientationY(alteration);
-                    if( theBall.orientation === 0 ) theBall.orientation = 10;
-                    else if( theBall.orientation === 180 ) theBall.orientation = 170;
-                    break;
             }
         });
-
         this.state.balls = savedBalls;
+
+        // Projectiles vs Briques/Murs
+        this.state.projectiles = this.state.projectiles.filter(proj => {
+            let hit = false;
+            if (proj.toRemove) return false;
+
+            for (const brick of this.state.bricks) {
+                if (proj.intersects(brick)) { 
+                    if (!brick.isUnbreakable) {
+                        brick.strength--;
+                        this.state.score += 5;
+                    }
+                    hit = true;
+                    break; 
+                }
+            }
+            this.state.bouncingEdges.forEach(e => {
+                 if (proj.intersects(e)) hit = true;
+            });
+
+            return !hit;
+        });
     }
 
     updateObjects() {
-        this.state.balls.forEach( theBall => theBall.update() );
-
-        // Nettoyage des briques détruites
-        this.state.bricks = this.state.bricks.filter( theBrick => theBrick.strength !== 0 );
-        
+        this.state.balls.forEach(b => b.update());
+        this.state.bonuses.forEach(b => b.update());
+        this.state.projectiles.forEach(p => p.update());
+        this.state.bricks = this.state.bricks.filter(b => b.strength > 0);
+        this.state.bonuses = this.state.bonuses.filter(b => b.position.y < this.config.canvasSize.height);
         this.state.paddle.updateKeyframe();
 
-        // --- VERIFICATION DE LA FIN DU NIVEAU ---
-        // On compte combien de briques destructibles il reste
-        const destructibleBricksLeft = this.state.bricks.filter( b => !b.isUnbreakable ).length;
-
-        // S'il n'en reste aucune, on passe au niveau suivant
-        if (destructibleBricksLeft === 0) {
-            this.nextLevel();
-        }
+        const left = this.state.bricks.filter(b => !b.isUnbreakable).length;
+        if (left === 0) this.nextLevel();
     }
 
     renderObjects() {
-        this.ctx.clearRect(0, 0, this.config.canvasSize.width, this.config.canvasSize.height);
-        this.state.bouncingEdges.forEach( theEdge => theEdge.draw() );
-        this.state.bricks.forEach( theBrick => theBrick.draw() );
+        this.ctx.clearRect(0,0,800,600);
+        this.state.bouncingEdges.forEach(e => e.draw());
+        this.state.bricks.forEach(b => b.draw());
+        this.state.bonuses.forEach(b => b.draw());
+        this.state.projectiles.forEach(p => p.draw());
         this.state.paddle.draw();
-        this.state.balls.forEach( theBall => theBall.draw() );
+        this.state.balls.forEach(b => b.draw());
+    }
+
+    nextLevel() {
+        this.state.currentLevelIndex++;
+        if (this.state.currentLevelIndex >= this.levels.data.length) {
+            alert("VICTOIRE ! Score: " + this.state.score); window.location.reload(); return;
+        }
+        this.state.balls=[]; this.state.bricks=[]; this.state.bonuses=[]; this.state.projectiles=[];
+        this.elLevel.textContent = `Niveau: ${this.state.currentLevelIndex + 1}`;
+        this.spawnBall();
+        this.state.paddle.setWidth(1);
+        this.state.paddle.hasLaser=false; this.state.paddle.isSticky=false;
+        this.loadBricks(this.levels.data[this.state.currentLevelIndex]);
     }
 
     loop(stamp) {
+        // Incrémentation du compteur de frames
+        this.frameCount++;
+        
         this.currentLoopStamp = stamp;
-        this.checkUserInput();
-        this.checkCollisions();
-        this.updateObjects();
-        this.renderObjects();
+        this.checkUserInput(); this.checkCollisions(); this.updateObjects(); this.renderObjects();
 
-        if( this.state.balls.length <= 0 ) {
-            this.state.lives --;
-            this.elLives.textContent = `Vies: ${this.state.lives}`;
-            
-            if (this.state.lives > 0) {
-                 this.spawnBall();
-            } else {
-                alert("Game Over ! Score final : " + this.state.score);
-                window.location.reload();
-                return;
-            }
+        if(this.state.balls.length <= 0) {
+            this.state.lives--; this.elLives.textContent=`Vies: ${this.state.lives}`;
+            if(this.state.lives>0) { 
+                this.spawnBall(); 
+                this.state.paddle.setWidth(1); this.state.paddle.hasLaser=false; this.state.paddle.isSticky=false;
+            } else { alert("Game Over"); window.location.reload(); return; }
         }
-
-        requestAnimationFrame( this.loop.bind(this) );
+        requestAnimationFrame(this.loop.bind(this));
     }
 
-    addDebugInfo( label, value ) {
-        this.debugInfo += label + ': ' + value + '<br>';
-    }
-
-    handlerKeyboard( isActive, evt ) {
-        if( evt.key === 'Right' || evt.key === 'ArrowRight' ) {
-            if( isActive && this.state.userInput.paddleLeft ) this.state.userInput.paddleLeft = false;
-            this.state.userInput.paddleRight = isActive;
+    handlerKeyboard(isActive, evt) {
+        if(evt.key==='Right'||evt.key==='ArrowRight') { 
+            if(isActive && this.state.userInput.paddleLeft) this.state.userInput.paddleLeft=false;
+            this.state.userInput.paddleRight=isActive;
         }
-        else if( evt.key === 'Left' || evt.key === 'ArrowLeft' ) {
-            if( isActive && this.state.userInput.paddleRight ) this.state.userInput.paddleRight = false;
-            this.state.userInput.paddleLeft = isActive;
+        else if(evt.key==='Left'||evt.key==='ArrowLeft') {
+            if(isActive && this.state.userInput.paddleRight) this.state.userInput.paddleRight=false;
+            this.state.userInput.paddleLeft=isActive;
+        }
+        else if(evt.key===' '||evt.code==='Space') {
+            this.state.userInput.space = isActive;
         }
     }
 }
