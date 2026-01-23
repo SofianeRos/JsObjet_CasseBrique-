@@ -26,7 +26,7 @@ class Game
     ctx;
     elScore; elLives; elLevel;
     
-    //  Compteur d'images pour gérer le rythme 
+    // Compteur pour le rythme des tirs
     frameCount = 0;
     
     currentLoopStamp;
@@ -59,6 +59,11 @@ class Game
 
     initHtmlUI() {
         const elH1 = document.createElement('h1'); elH1.textContent = 'Arkanoïd Ultra';
+        // Style modifié pour aller avec le thème sombre
+        elH1.style.color = '#fff';
+        elH1.style.textShadow = '0 0 10px #0ff';
+        elH1.style.fontFamily = 'Segoe UI, sans-serif';
+
         const infoBar = document.createElement('div');
         infoBar.style.display = 'flex'; infoBar.style.justifyContent = 'space-between'; infoBar.style.width = '800px'; infoBar.style.fontWeight = 'bold';
         
@@ -144,7 +149,7 @@ class Game
                 break;
             case 'STICKY':
                 this.state.paddle.isSticky = true;
-                this.state.paddle.hasLaser = false;
+                this.state.paddle.hasLaser = false; // Laser et Sticky sont mutuellement exclusifs
                 break;
             case 'LASER':
                 this.state.paddle.hasLaser = true;
@@ -157,20 +162,23 @@ class Game
     }
 
     checkUserInput() {
+        // Mouvement Paddle
         if(this.state.userInput.paddleRight) { this.state.paddle.orientation=0; this.state.paddle.speed=7; }
         if(this.state.userInput.paddleLeft) { this.state.paddle.orientation=180; this.state.paddle.speed=7; }
         if(!this.state.userInput.paddleRight && !this.state.userInput.paddleLeft) this.state.paddle.speed=0;
         
+        // Touche ESPACE
         if (this.state.userInput.space) {
+            
+            // 1. GESTION DE LA BALLE COLLANTE
             this.state.balls.forEach(b => {
                 if (b.isStuck) {
                     b.isStuck = false;
-                    b.orientation = 90;
+                    b.orientation = 90; // On la lance vers le haut
                 }
             });
 
-            //  On utilise frameCount au lieu du timestamp
-            // Le modulo 10 permet de tirer toutes les 10 frames (environ 6 fois par seconde)
+            // 2. GESTION DU LASER (Cadence de tir)
             if (this.state.paddle.hasLaser && this.frameCount % 10 === 0) {
                 const p1 = new Projectile(this.state.paddle.position.x, this.state.paddle.position.y);
                 const p2 = new Projectile(this.state.paddle.position.x + this.state.paddle.size.width - 4, this.state.paddle.position.y);
@@ -203,20 +211,25 @@ class Game
 
         const savedBalls = [];
         this.state.balls.forEach(ball => {
+            // Mort ?
             if(ball.getCollisionType(this.state.deathEdge) !== CollisionType.NONE) return;
             savedBalls.push(ball);
 
+            // --- LOGIQUE STICKY (COLLANT) ---
             if (ball.isStuck) {
+                // Si la balle est collée, on force sa position X à suivre le paddle
                 ball.position.x = this.state.paddle.position.x + ball.stuckOffset;
-                return;
+                return; // On arrête là, elle ne doit pas rebondir ailleurs
             }
 
+            // Murs
             this.state.bouncingEdges.forEach(e => {
                 const c = ball.getCollisionType(e);
                 if(c===CollisionType.HORIZONTAL) ball.reverseOrientationX();
                 if(c===CollisionType.VERTICAL) ball.reverseOrientationY();
             });
 
+            // Briques
             this.state.bricks.forEach(brick => {
                 const c = ball.getCollisionType(brick);
                 if (c !== CollisionType.NONE) {
@@ -230,6 +243,7 @@ class Game
                         this.state.score += 10;
                         this.elScore.textContent = `Score: ${this.state.score}`;
 
+                        // Drop de Bonus (20% de chance)
                         if (brick.strength === 0 && Math.random() < 0.20) {
                             const bonus = new Bonus(brick.position.x + 10, brick.position.y);
                             this.state.bonuses.push(bonus);
@@ -238,12 +252,16 @@ class Game
                 }
             });
 
+            // Collision Paddle
             const pc = ball.getCollisionType(this.state.paddle);
             if(pc !== CollisionType.NONE) {
+                // Si le paddle est "Sticky", on colle la balle
                 if (this.state.paddle.isSticky) {
                     ball.isStuck = true;
+                    // On retient où elle a touché par rapport au paddle
                     ball.stuckOffset = ball.position.x - this.state.paddle.position.x;
                 } else {
+                    // Rebond normal
                     if(pc===CollisionType.HORIZONTAL) ball.reverseOrientationX();
                     else {
                         let alt = 0;
@@ -258,7 +276,7 @@ class Game
         });
         this.state.balls = savedBalls;
 
-        // Projectiles vs Briques/Murs
+        // Projectiles
         this.state.projectiles = this.state.projectiles.filter(proj => {
             let hit = false;
             if (proj.toRemove) return false;
@@ -276,7 +294,6 @@ class Game
             this.state.bouncingEdges.forEach(e => {
                  if (proj.intersects(e)) hit = true;
             });
-
             return !hit;
         });
     }
@@ -317,9 +334,7 @@ class Game
     }
 
     loop(stamp) {
-        // Incrémentation du compteur de frames
         this.frameCount++;
-        
         this.currentLoopStamp = stamp;
         this.checkUserInput(); this.checkCollisions(); this.updateObjects(); this.renderObjects();
 

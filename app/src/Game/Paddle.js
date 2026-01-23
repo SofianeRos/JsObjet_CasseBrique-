@@ -3,7 +3,6 @@ import theGame from "./Game";
 
 export default class Paddle extends MovingObject
 {
-    // Propriétés pour l'animation
     animationIndex = 0;
     previousKeyframeStamp;
     frameRate = 20;
@@ -12,7 +11,6 @@ export default class Paddle extends MovingObject
     hasLaser = false;
     isSticky = false;
 
-    // Sauvegarde de la taille originale
     originalWidth;
 
     constructor(image, width, height, orientation, speed) {
@@ -21,23 +19,51 @@ export default class Paddle extends MovingObject
     }
 
     draw() {
-        // On dessine différemment si on a le Laser (filtre rouge)
-        if (this.hasLaser) theGame.ctx.filter = 'sepia(100%) hue-rotate(-50deg) saturate(600%)';
-        else if (this.isSticky) theGame.ctx.filter = 'sepia(100%) hue-rotate(50deg) saturate(600%)';
+        const ctx = theGame.ctx;
+        const x = this.position.x;
+        const y = this.position.y;
+        const w = this.size.width;
+        const h = this.size.height;
 
-        const sourceY = this.animationIndex * this.size.height;
+        // Choix de la couleur des lumières selon le bonus
+        let lightColor = "#00ffff"; // Cyan par défaut
+        if (this.hasLaser) lightColor = "#ff00ff"; // Violet si Laser
+        else if (this.isSticky) lightColor = "#ffff00"; // Jaune si Collant
 
-        theGame.ctx.drawImage(
-            this.image,
-            0, sourceY, // On prend toujours toute la largeur de l'image source
-            100, 20,    // Taille originale de l'image (hardcodée ici selon ton image)
-            this.position.x,
-            this.position.y,
-            this.size.width, // Largeur dynamique (bonus)
-            this.size.height
-        );
+        // 1. Corps du vaisseau (Métallique)
+        const gradient = ctx.createLinearGradient(x, y, x, y + h);
+        gradient.addColorStop(0, "#555");
+        gradient.addColorStop(0.5, "#eee"); // Reflet au milieu
+        gradient.addColorStop(1, "#222");
+
+        ctx.fillStyle = gradient;
         
-        theGame.ctx.filter = 'none';
+        // Forme trapézoïdale arrondie
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, h, 10); 
+        ctx.fill();
+
+        // 2. Lumières latérales (Réacteurs)
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = lightColor;
+        ctx.fillStyle = lightColor;
+
+        // Lumière Gauche
+        ctx.beginPath();
+        ctx.arc(x + 10, y + h/2, 4, 0, Math.PI*2);
+        ctx.fill();
+
+        // Lumière Droite
+        ctx.beginPath();
+        ctx.arc(x + w - 10, y + h/2, 4, 0, Math.PI*2);
+        ctx.fill();
+
+        // 3. Barre d'énergie centrale
+        ctx.fillStyle = lightColor;
+        ctx.fillRect(x + w/2 - 15, y + 5, 30, 4);
+
+        // Reset des effets d'ombre pour la suite du jeu
+        ctx.shadowBlur = 0;
     }
 
     setWidth(ratio) {
@@ -45,16 +71,7 @@ export default class Paddle extends MovingObject
     }
 
     updateKeyframe() {
-        if( ! this.previousKeyframeStamp ) {
-            this.previousKeyframeStamp = theGame.currentLoopStamp;
-            return;
-        }
-        const delta = theGame.currentLoopStamp - this.previousKeyframeStamp;
-        if( delta < 1000 / this.frameRate ) return;
-
-        this.animationIndex ++;
-        if( this.animationIndex > 3) this.animationIndex = 0;
-
-        this.previousKeyframeStamp = theGame.currentLoopStamp;
+        // Animation inutile maintenant qu'on dessine en code, 
+        // mais on garde la méthode pour ne pas casser Game.js
     }
 }

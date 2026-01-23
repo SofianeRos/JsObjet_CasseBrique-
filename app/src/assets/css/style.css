@@ -1,9 +1,21 @@
 body {
-    background-color: #fffefe;
+    background-color: #222;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    height: 100vh;
+    margin: 0;
+    color: white;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 canvas {
-    background-color: #00c;
+    /* Un fond dégradé radial (du bleu nuit au noir) */
+    background: radial-gradient(circle at center, #1a1a2e 0%, #0f0f1a 100%);
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5); /* Ombre externe autour du jeu */
+    border: 2px solid #333;
+    border-radius: 4px;
 }
 
 canvas + span {

@@ -3,14 +3,13 @@ import theGame from "./Game";
 
 export default class Bonus extends MovingObject
 {
-    // Types : 'M' (Multi), 'L' (Laser), 'S' (Slow/Sticky), 'P' (Penetrating), '+' (Grand), '-' (Petit)
     type;
     color;
-    text;
+    symbol; // On remplace 'text' par un symbole plus simple
 
     constructor( x, y ) {
-        // Pas d'image pour l'instant, on dessine un carré
-        super( null, 30, 15, 270, 2 ); // 270° = vers le bas, vitesse 2
+        // On définit une taille carrée pour que ce soit rond
+        super( null, 30, 30, 270, 2 ); 
         this.position = { x: x, y: y };
         
         this.randomizeType();
@@ -18,20 +17,45 @@ export default class Bonus extends MovingObject
 
     randomizeType() {
         const rand = Math.random();
-        if (rand < 0.2) { this.type = 'MULTI'; this.text = 'M'; this.color = '#00f'; }
-        else if (rand < 0.4) { this.type = 'BIG'; this.text = '+'; this.color = '#0f0'; }
-        else if (rand < 0.5) { this.type = 'SMALL'; this.text = '-'; this.color = '#f00'; }
-        else if (rand < 0.7) { this.type = 'LASER'; this.text = 'L'; this.color = '#f0f'; }
-        else if (rand < 0.85) { this.type = 'STICKY'; this.text = 'S'; this.color = '#ff0'; }
-        else { this.type = 'PENETRATING'; this.text = 'P'; this.color = '#0ff'; }
+        // Couleurs néons
+        if (rand < 0.2) { this.type = 'MULTI'; this.symbol = 'M'; this.color = '#00ffff'; } // Cyan
+        else if (rand < 0.4) { this.type = 'BIG'; this.symbol = '+'; this.color = '#00ff00'; } // Vert
+        else if (rand < 0.5) { this.type = 'SMALL'; this.symbol = '-'; this.color = '#ff3333'; } // Rouge
+        else if (rand < 0.7) { this.type = 'LASER'; this.symbol = '⚡'; this.color = '#ff00ff'; } // Magenta
+        else if (rand < 0.85) { this.type = 'STICKY'; this.symbol = '⚓'; this.color = '#ffff00'; } // Jaune
+        else { this.type = 'PENETRATING'; this.symbol = '★'; this.color = '#ffffff'; } // Blanc
     }
 
     draw() {
-        theGame.ctx.fillStyle = this.color;
-        theGame.ctx.fillRect(this.position.x, this.position.y, this.size.width, this.size.height);
-        
-        theGame.ctx.fillStyle = '#000';
-        theGame.ctx.font = '12px Arial';
-        theGame.ctx.fillText(this.text, this.position.x + 8, this.position.y + 12);
+        const ctx = theGame.ctx;
+        const centerX = this.position.x + this.size.width / 2;
+        const centerY = this.position.y + this.size.height / 2;
+        const radius = this.size.width / 2;
+
+        // 1. Lueur externe (Glow)
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = this.color;
+
+        // 2. Cercle principal
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+        ctx.fillStyle = this.color;
+        ctx.fill();
+        ctx.closePath();
+
+        // 3. Reflet brillant (pour effet 3D)
+        ctx.shadowBlur = 0; // On coupe le glow pour le détail
+        ctx.beginPath();
+        ctx.arc(centerX - 5, centerY - 5, radius / 3, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
+        ctx.fill();
+        ctx.closePath();
+
+        // 4. Symbole au centre
+        ctx.fillStyle = "#000";
+        ctx.font = "bold 16px Arial";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(this.symbol, centerX, centerY + 1); // +1 pour ajuster visuellement
     }
 }
