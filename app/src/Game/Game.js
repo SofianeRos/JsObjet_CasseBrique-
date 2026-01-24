@@ -24,26 +24,37 @@ class Game
     
     levels;
     ctx;
-    elScore; elLives; elLevel;
     
-    // Compteur pour le rythme des tirs
+    gameState = 'MENU'; 
+    gameMode = 'SOLO';
+    
+    menuCursor = 0; 
+    gameOverCursor = 0;
+
+    players = []; 
+    currentPlayerIndex = 0; 
+    
+    switchTimer = 0;
     frameCount = 0;
-    
     currentLoopStamp;
-    debugSpan; debugInfo = '';
 
     images = { ball: null, paddle: null, brick: null, edge: null };
 
     state = {
-        score: 0, lives: 3, currentLevelIndex: 0,
+        score: 0, 
+        lives: 0, 
+        currentLevelIndex: 0,
         balls: [],
         bricks: [],
         bonuses: [],
         projectiles: [],
-        deathEdge: null, bouncingEdges: [],
+        deathEdge: null, 
+        bouncingEdges: [],
         paddle: null,
-        userInput: { paddleLeft: false, paddleRight: false, space: false }
+        userInput: { paddleLeft: false, paddleRight: false, space: false, enter: false, up: false, down: false }
     };
+
+    lastInputTime = 0;
 
     constructor( customConfig = {}, levelsConfig = [] ) {
         Object.assign( this.config, customConfig );
@@ -53,29 +64,29 @@ class Game
     start() {
         this.initHtmlUI();
         this.initImages();
-        this.initGameObjects();
+        this.initPlayersData();
         requestAnimationFrame( this.loop.bind(this) );
     }
 
+    initPlayersData() {
+        if (this.gameMode === 'SOLO') {
+            this.players = [
+                { id: 1, score: 0, lives: 3, level: 0, bricks: null, paddleWidthRatio: 1, color: '#00ffff' }
+            ];
+        } else {
+            this.players = [
+                { id: 1, score: 0, lives: 3, level: 0, bricks: null, paddleWidthRatio: 1, color: '#00ffff' },
+                { id: 2, score: 0, lives: 3, level: 0, bricks: null, paddleWidthRatio: 1, color: '#39ff14' } 
+            ];
+        }
+        this.currentPlayerIndex = 0;
+    }
+
     initHtmlUI() {
-        const elH1 = document.createElement('h1'); elH1.textContent = 'Arkanoïd';
-        // Style modifié pour aller avec le thème sombre
-        elH1.style.color = '#fff';
-        elH1.style.textShadow = '0 0 10px #0ff';
-        elH1.style.fontFamily = 'Segoe UI, sans-serif';
-
-        const infoBar = document.createElement('div');
-        infoBar.style.display = 'flex'; infoBar.style.justifyContent = 'space-between'; infoBar.style.width = '800px'; infoBar.style.fontWeight = 'bold';
-        
-        this.elLives = document.createElement('span'); this.elLives.textContent = `Vies: ${this.state.lives}`;
-        this.elLevel = document.createElement('span'); this.elLevel.textContent = `Niveau: ${this.state.currentLevelIndex + 1}`;
-        this.elScore = document.createElement('span'); this.elScore.textContent = `Score: ${this.state.score}`;
-        infoBar.append(this.elLives, this.elLevel, this.elScore);
-
         const elCanvas = document.createElement( 'canvas' );
-        elCanvas.width = this.config.canvasSize.width; elCanvas.height = this.config.canvasSize.height;
-        this.debugSpan = document.createElement( 'span' );
-        document.body.append( elH1, infoBar, elCanvas, this.debugSpan );
+        elCanvas.width = this.config.canvasSize.width; 
+        elCanvas.height = this.config.canvasSize.height;
+        document.body.append( elCanvas );
         this.ctx = elCanvas.getContext('2d');
 
         document.addEventListener( 'keydown', this.handlerKeyboard.bind(this, true) );
@@ -90,35 +101,59 @@ class Game
         i.edge = new Image(); i.edge.src = edgeImgSrc;
     }
 
-    spawnBall(addToExisting = false) {
-        const d = this.config.ball.radius * 2;
-        let angle = Math.floor(Math.random() * (135 - 45 + 1) + 45);
-
-        const ball = new Ball(this.images.ball, d, d, angle, this.config.ball.speed);
-        
-        if (addToExisting && this.state.paddle) {
-             ball.setPosition(this.state.paddle.position.x + 20, this.state.paddle.position.y - 20);
-        } else {
-             ball.setPosition(this.config.ball.position.x, this.config.ball.position.y);
-        }
-        ball.isCircular = true;
-        
-        if (addToExisting) this.state.balls.push(ball);
-        else this.state.balls = [ ball ];
+    saveCurrentPlayerState() {
+        const p = this.players[this.currentPlayerIndex];
+        p.score = this.state.score;
+        p.lives = this.state.lives;
+        p.level = this.state.currentLevelIndex;
+        p.bricks = this.state.bricks; 
+        p.paddleWidthRatio = this.state.paddle.size.width / this.config.paddleSize.width;
     }
 
-    initGameObjects() {
+    loadPlayerState(playerIndex) {
+        this.currentPlayerIndex = playerIndex;
+        const p = this.players[playerIndex];
+
+        if (p.lives <= 0) {
+            if (this.players.every(pl => pl.lives <= 0)) {
+                this.gameState = 'GAMEOVER';
+                this.gameOverCursor = 0;
+                return;
+            }
+            this.loadPlayerState((playerIndex + 1) % this.players.length);
+            return;
+        }
+
+        this.state.score = p.score;
+        this.state.lives = p.lives;
+        this.state.currentLevelIndex = p.level;
+        this.state.balls = [];
+        this.state.bonuses = [];
+        this.state.projectiles = [];
+
+        this.initGameObjects(p.bricks, p.paddleWidthRatio);
+    }
+
+    initGameObjects(savedBricks = null, paddleRatio = 1) {
         this.spawnBall();
+        
         const de = new GameObject(this.images.edge, 800, 20); de.setPosition(0, 630); this.state.deathEdge = de;
         const et = new GameObject(this.images.edge, 800, 20); et.setPosition(0, 0);
         const er = new GameObject(this.images.edge, 20, 610); er.setPosition(780, 20); er.tag = 'RightEdge';
         const el = new GameObject(this.images.edge, 20, 610); el.setPosition(0, 20); el.tag = 'LeftEdge';
-        this.state.bouncingEdges.push(et, er, el);
+        this.state.bouncingEdges = [et, er, el];
 
         const p = new Paddle(this.images.paddle, this.config.paddleSize.width, this.config.paddleSize.height, 0, 0);
         p.setPosition(350, 550);
+        p.setWidth(paddleRatio);
         this.state.paddle = p;
-        this.loadBricks(this.levels.data[this.state.currentLevelIndex]);
+
+        if (savedBricks) {
+            this.state.bricks = savedBricks;
+        } else {
+            this.state.bricks = [];
+            this.loadBricks(this.levels.data[this.state.currentLevelIndex]);
+        }
     }
 
     loadBricks(arr) {
@@ -133,52 +168,55 @@ class Game
         }
     }
 
+    spawnBall(addToExisting = false) {
+        const d = this.config.ball.radius * 2;
+        let angle = Math.floor(Math.random() * (135 - 45 + 1) + 45);
+        const ball = new Ball(this.images.ball, d, d, angle, this.config.ball.speed);
+        
+        if (addToExisting && this.state.paddle) {
+             ball.setPosition(this.state.paddle.position.x + 20, this.state.paddle.position.y - 20);
+        } else {
+             ball.setPosition(this.config.ball.position.x, this.config.ball.position.y);
+        }
+        ball.isCircular = true;
+        
+        if (addToExisting) this.state.balls.push(ball);
+        else this.state.balls = [ ball ];
+    }
+
+    // --- GAMEPLAY BONUS ET MALUS ---
+
     activateBonus(bonus) {
         this.state.score += 50; 
-        this.elScore.textContent = `Score: ${this.state.score}`;
-
         switch(bonus.type) {
-            case 'MULTI':
-                this.spawnBall(true); this.spawnBall(true);
+            case 'MULTI': this.spawnBall(true); this.spawnBall(true); break;
+            case 'BIG': this.state.paddle.setWidth(1.5); break;
+            case 'SMALL': this.state.paddle.setWidth(0.7); break;
+            case 'STICKY': this.state.paddle.isSticky = true; this.state.paddle.hasLaser = false; break;
+            case 'LASER': this.state.paddle.hasLaser = true; this.state.paddle.isSticky = false; break;
+            
+            // ACTIVATION BALLE PERFORANTE
+            case 'PENETRATING': 
+                this.state.balls.forEach(b => { 
+                    b.isPenetrating = true; 
+                    // Visuel pour dire qu'elle est puissante
+                }); 
                 break;
-            case 'BIG':
-                this.state.paddle.setWidth(1.5);
-                break;
-            case 'SMALL':
-                this.state.paddle.setWidth(0.7);
-                break;
-            case 'STICKY':
-                this.state.paddle.isSticky = true;
-                this.state.paddle.hasLaser = false; // Laser et Sticky sont mutuellement exclusifs
-                break;
-            case 'LASER':
-                this.state.paddle.hasLaser = true;
-                this.state.paddle.isSticky = false;
-                break;
-            case 'PENETRATING':
-                this.state.balls.forEach(b => { b.isPenetrating = true; });
-                break;
+                
+            case 'FAST': this.state.balls.forEach(b => { b.speed *= 1.5; }); break;
+            case 'DEATH': this.state.balls = []; break;
         }
     }
 
     checkUserInput() {
-        // Mouvement Paddle
         if(this.state.userInput.paddleRight) { this.state.paddle.orientation=0; this.state.paddle.speed=7; }
         if(this.state.userInput.paddleLeft) { this.state.paddle.orientation=180; this.state.paddle.speed=7; }
         if(!this.state.userInput.paddleRight && !this.state.userInput.paddleLeft) this.state.paddle.speed=0;
         
-        // Touche ESPACE
         if (this.state.userInput.space) {
-            
-            // 1. GESTION DE LA BALLE COLLANTE
             this.state.balls.forEach(b => {
-                if (b.isStuck) {
-                    b.isStuck = false;
-                    b.orientation = 90; // On la lance vers le haut
-                }
+                if (b.isStuck) { b.isStuck = false; b.orientation = 90; }
             });
-
-            // 2. GESTION DU LASER (Cadence de tir)
             if (this.state.paddle.hasLaser && this.frameCount % 10 === 0) {
                 const p1 = new Projectile(this.state.paddle.position.x, this.state.paddle.position.y);
                 const p2 = new Projectile(this.state.paddle.position.x + this.state.paddle.size.width - 4, this.state.paddle.position.y);
@@ -189,7 +227,6 @@ class Game
     }
 
     checkCollisions() {
-        // Paddle vs Bords
         this.state.bouncingEdges.forEach(e => {
             if(this.state.paddle.getCollisionType(e) === CollisionType.HORIZONTAL) {
                 this.state.paddle.speed = 0;
@@ -200,68 +237,50 @@ class Game
             }
         });
 
-        // Paddle vs Bonus
         this.state.bonuses = this.state.bonuses.filter(bonus => {
-            if (this.state.paddle.intersects(bonus)) { 
-                this.activateBonus(bonus);
-                return false; 
-            }
+            if (this.state.paddle.intersects(bonus)) { this.activateBonus(bonus); return false; }
             return true;
         });
 
         const savedBalls = [];
         this.state.balls.forEach(ball => {
-            // Mort ?
-            if(ball.getCollisionType(this.state.deathEdge) !== CollisionType.NONE) return;
+            if(ball.getCollisionType(this.state.deathEdge) !== CollisionType.NONE) return; 
             savedBalls.push(ball);
 
-            // --- LOGIQUE STICKY (COLLANT) ---
-            if (ball.isStuck) {
-                // Si la balle est collée, on force sa position X à suivre le paddle
-                ball.position.x = this.state.paddle.position.x + ball.stuckOffset;
-                return; // On arrête là, elle ne doit pas rebondir ailleurs
-            }
+            if (ball.isStuck) { ball.position.x = this.state.paddle.position.x + ball.stuckOffset; return; }
 
-            // Murs
             this.state.bouncingEdges.forEach(e => {
                 const c = ball.getCollisionType(e);
                 if(c===CollisionType.HORIZONTAL) ball.reverseOrientationX();
                 if(c===CollisionType.VERTICAL) ball.reverseOrientationY();
             });
 
-            // Briques
             this.state.bricks.forEach(brick => {
                 const c = ball.getCollisionType(brick);
                 if (c !== CollisionType.NONE) {
-                    if (c===CollisionType.HORIZONTAL) ball.reverseOrientationX();
-                    else ball.reverseOrientationY();
-
+                    if (c===CollisionType.HORIZONTAL) ball.reverseOrientationX(); else ball.reverseOrientationY();
+                    
                     if(!brick.isUnbreakable) {
-                        if (ball.isPenetrating) brick.strength = 0;
-                        else brick.strength --;
-
+                        // --- LOGIQUE BALLE PERFORANTE ---
+                        if (ball.isPenetrating) {
+                            brick.strength = 0; // Destruction immédiate (peu importe la vie de la brique)
+                        } else {
+                            brick.strength --;
+                        }
+                        
                         this.state.score += 10;
-                        this.elScore.textContent = `Score: ${this.state.score}`;
-
-                        // Drop de Bonus (20% de chance)
-                        if (brick.strength === 0 && Math.random() < 0.20) {
-                            const bonus = new Bonus(brick.position.x + 10, brick.position.y);
-                            this.state.bonuses.push(bonus);
+                        if (brick.strength === 0 && Math.random() < 0.40) {
+                            this.state.bonuses.push(new Bonus(brick.position.x + 10, brick.position.y));
                         }
                     }
                 }
             });
 
-            // Collision Paddle
             const pc = ball.getCollisionType(this.state.paddle);
             if(pc !== CollisionType.NONE) {
-                // Si le paddle est "Sticky", on colle la balle
                 if (this.state.paddle.isSticky) {
-                    ball.isStuck = true;
-                    // On retient où elle a touché par rapport au paddle
-                    ball.stuckOffset = ball.position.x - this.state.paddle.position.x;
+                    ball.isStuck = true; ball.stuckOffset = ball.position.x - this.state.paddle.position.x;
                 } else {
-                    // Rebond normal
                     if(pc===CollisionType.HORIZONTAL) ball.reverseOrientationX();
                     else {
                         let alt = 0;
@@ -276,24 +295,16 @@ class Game
         });
         this.state.balls = savedBalls;
 
-        // Projectiles
         this.state.projectiles = this.state.projectiles.filter(proj => {
             let hit = false;
             if (proj.toRemove) return false;
-
             for (const brick of this.state.bricks) {
                 if (proj.intersects(brick)) { 
-                    if (!brick.isUnbreakable) {
-                        brick.strength--;
-                        this.state.score += 5;
-                    }
-                    hit = true;
-                    break; 
+                    if (!brick.isUnbreakable) { brick.strength--; this.state.score += 5; }
+                    hit = true; break; 
                 }
             }
-            this.state.bouncingEdges.forEach(e => {
-                 if (proj.intersects(e)) hit = true;
-            });
+            this.state.bouncingEdges.forEach(e => { if (proj.intersects(e)) hit = true; });
             return !hit;
         });
     }
@@ -307,7 +318,16 @@ class Game
         this.state.paddle.updateKeyframe();
 
         const left = this.state.bricks.filter(b => !b.isUnbreakable).length;
-        if (left === 0) this.nextLevel();
+        if (left === 0) {
+            this.state.currentLevelIndex++;
+            if (this.state.currentLevelIndex >= this.levels.data.length) {
+                this.state.currentLevelIndex = 0; 
+            }
+            this.state.balls=[]; this.state.projectiles=[]; this.state.bonuses=[];
+            this.spawnBall();
+            this.state.bricks = [];
+            this.loadBricks(this.levels.data[this.state.currentLevelIndex]);
+        }
     }
 
     renderObjects() {
@@ -318,32 +338,194 @@ class Game
         this.state.projectiles.forEach(p => p.draw());
         this.state.paddle.draw();
         this.state.balls.forEach(b => b.draw());
+        this.drawHUD();
     }
 
-    nextLevel() {
-        this.state.currentLevelIndex++;
-        if (this.state.currentLevelIndex >= this.levels.data.length) {
-            alert("VICTOIRE ! Score: " + this.state.score); window.location.reload(); return;
+    drawHUD() {
+        const pColor = this.players[this.currentPlayerIndex].color;
+        this.ctx.font = "bold 20px 'Segoe UI', sans-serif";
+        this.ctx.fillStyle = "#fff";
+        this.ctx.textAlign = "left";
+        this.ctx.fillText(`Vies: ${this.state.lives}`, 20, 50);
+        this.ctx.fillText(`Niveau: ${this.state.currentLevelIndex + 1}`, 120, 50);
+        this.ctx.textAlign = "right";
+        this.ctx.fillText(`Score: ${this.state.score}`, 780, 50);
+
+        this.ctx.textAlign = "center";
+        this.ctx.shadowBlur = 10;
+        this.ctx.shadowColor = pColor;
+        this.ctx.fillStyle = pColor;
+        const playerName = this.gameMode === 'MULTI' ? `JOUEUR ${this.currentPlayerIndex + 1}` : "SOLO";
+        this.ctx.fillText(playerName, 400, 50);
+        this.ctx.shadowBlur = 0;
+    }
+
+    drawMenu() {
+        this.ctx.clearRect(0, 0, 800, 600);
+        
+        this.ctx.textAlign = "center";
+        this.ctx.font = "bold 60px 'Segoe UI'";
+        this.ctx.shadowBlur = 20;
+        this.ctx.shadowColor = "#00ffff";
+        this.ctx.fillStyle = "#fff";
+        this.ctx.fillText("ARKANOID ULTRA", 400, 150);
+        this.ctx.shadowBlur = 0;
+
+        const options = ["1 JOUEUR", "2 JOUEURS "];
+        options.forEach((opt, index) => {
+            const isSelected = this.menuCursor === index;
+            this.ctx.font = isSelected ? "bold 35px 'Segoe UI'" : "30px 'Segoe UI'";
+            this.ctx.fillStyle = isSelected ? "#fff" : "#666";
+            if (isSelected) {
+                this.ctx.shadowBlur = 15; this.ctx.shadowColor = "#00ffff";
+                this.ctx.fillText("> " + opt + " <", 400, 300 + (index * 60));
+            } else {
+                this.ctx.shadowBlur = 0;
+                this.ctx.fillText(opt, 400, 300 + (index * 60));
+            }
+        });
+        this.ctx.shadowBlur = 0;
+        this.ctx.font = "20px 'Segoe UI'";
+        this.ctx.fillStyle = "#ccc";
+        this.ctx.fillText("Utilisez les Flèches et ENTRÉE pour choisir", 400, 500);
+    }
+
+    drawSwitching() {
+        this.ctx.clearRect(0, 0, 800, 600);
+        const pColor = this.players[this.currentPlayerIndex].color;
+        
+        this.ctx.textAlign = "center";
+        this.ctx.font = "bold 40px 'Segoe UI'";
+        this.ctx.shadowBlur = 20;
+        this.ctx.shadowColor = pColor;
+        this.ctx.fillStyle = pColor;
+        this.ctx.fillText(`TOUR DU JOUEUR ${this.currentPlayerIndex + 1}`, 400, 300);
+        this.ctx.shadowBlur = 0;
+        this.ctx.font = "20px 'Segoe UI'";
+        this.ctx.fillStyle = "#fff";
+        this.ctx.fillText(`Vies restantes: ${this.state.lives}`, 400, 350);
+    }
+
+    drawGameOver() {
+        this.ctx.clearRect(0, 0, 800, 600);
+        this.ctx.textAlign = "center";
+        this.ctx.font = "bold 60px 'Segoe UI'";
+        this.ctx.shadowBlur = 20;
+        this.ctx.shadowColor = "#ff0000";
+        this.ctx.fillStyle = "#fff";
+        this.ctx.fillText("GAME OVER", 400, 120);
+        this.ctx.shadowBlur = 0;
+
+        this.ctx.font = "25px 'Segoe UI'";
+        if (this.gameMode === 'MULTI') {
+            this.ctx.fillStyle = this.players[0].color;
+            this.ctx.fillText(`Joueur 1 : ${this.players[0].score} pts`, 400, 200);
+            this.ctx.fillStyle = this.players[1].color;
+            this.ctx.fillText(`Joueur 2 : ${this.players[1].score} pts`, 400, 240);
+            
+            let winnerText = "";
+            if (this.players[0].score > this.players[1].score) winnerText = "VICTOIRE JOUEUR 1 !";
+            else if (this.players[1].score > this.players[0].score) winnerText = "VICTOIRE JOUEUR 2 !";
+            else winnerText = "ÉGALITÉ !";
+
+            this.ctx.font = "bold 30px 'Segoe UI'";
+            this.ctx.fillStyle = "#ffff00";
+            this.ctx.fillText(winnerText, 400, 300);
+        } else {
+            this.ctx.fillStyle = "#fff";
+            this.ctx.fillText(`Score Final : ${this.state.score}`, 400, 220);
         }
-        this.state.balls=[]; this.state.bricks=[]; this.state.bonuses=[]; this.state.projectiles=[];
-        this.elLevel.textContent = `Niveau: ${this.state.currentLevelIndex + 1}`;
-        this.spawnBall();
-        this.state.paddle.setWidth(1);
-        this.state.paddle.hasLaser=false; this.state.paddle.isSticky=false;
-        this.loadBricks(this.levels.data[this.state.currentLevelIndex]);
+
+        const options = ["REJOUER", "ACCUEIL"];
+        options.forEach((opt, index) => {
+            const isSelected = this.gameOverCursor === index;
+            this.ctx.font = isSelected ? "bold 30px 'Segoe UI'" : "25px 'Segoe UI'";
+            this.ctx.fillStyle = isSelected ? "#fff" : "#666";
+            
+            if (isSelected) {
+                this.ctx.shadowBlur = 10; this.ctx.shadowColor = "#00ff00";
+                this.ctx.strokeStyle = "#fff"; this.ctx.lineWidth = 2;
+                this.ctx.strokeRect(300, 380 + (index * 60) - 35, 200, 50);
+            } else {
+                this.ctx.shadowBlur = 0;
+            }
+            this.ctx.fillText(opt, 400, 380 + (index * 60));
+        });
     }
 
     loop(stamp) {
         this.frameCount++;
         this.currentLoopStamp = stamp;
-        this.checkUserInput(); this.checkCollisions(); this.updateObjects(); this.renderObjects();
+        const now = Date.now();
+        let inputUp = false, inputDown = false, inputEnter = false;
 
-        if(this.state.balls.length <= 0) {
-            this.state.lives--; this.elLives.textContent=`Vies: ${this.state.lives}`;
-            if(this.state.lives>0) { 
-                this.spawnBall(); 
-                this.state.paddle.setWidth(1); this.state.paddle.hasLaser=false; this.state.paddle.isSticky=false;
-            } else { alert("Game Over"); window.location.reload(); return; }
+        if (now - this.lastInputTime > 200) {
+            if (this.state.userInput.up) { inputUp = true; this.lastInputTime = now; }
+            if (this.state.userInput.down) { inputDown = true; this.lastInputTime = now; }
+            if (this.state.userInput.enter) { inputEnter = true; this.lastInputTime = now; }
+        } else if (!this.state.userInput.up && !this.state.userInput.down && !this.state.userInput.enter) {
+            this.lastInputTime = 0;
+        }
+
+        if (this.gameState === 'MENU') {
+            this.drawMenu();
+            if (inputUp) this.menuCursor = Math.max(0, this.menuCursor - 1);
+            if (inputDown) this.menuCursor = Math.min(1, this.menuCursor + 1);
+            if (inputEnter) {
+                this.gameMode = this.menuCursor === 0 ? 'SOLO' : 'MULTI';
+                this.initPlayersData();
+                this.loadPlayerState(0);
+                this.gameState = 'PLAYING';
+            }
+        }
+        else if (this.gameState === 'PLAYING') {
+            this.checkUserInput(); 
+            this.checkCollisions(); 
+            this.updateObjects(); 
+            this.renderObjects();
+
+            if(this.state.balls.length <= 0) {
+                this.state.lives--; 
+                this.saveCurrentPlayerState();
+
+                if (this.gameMode === 'SOLO') {
+                    if (this.state.lives <= 0) {
+                        this.gameState = 'GAMEOVER';
+                        this.gameOverCursor = 0;
+                    } else {
+                        this.spawnBall();
+                        this.state.paddle.setWidth(1);
+                        this.state.paddle.hasLaser=false; this.state.paddle.isSticky=false;
+                    }
+                } else {
+                    this.gameState = 'SWITCHING';
+                    this.switchTimer = stamp;
+                    const nextPlayer = (this.currentPlayerIndex + 1) % 2;
+                    this.loadPlayerState(nextPlayer);
+                }
+            }
+        }
+        else if (this.gameState === 'SWITCHING') {
+            this.drawSwitching();
+            if (stamp - this.switchTimer > 2000) {
+                if (this.gameState === 'GAMEOVER') return;
+                this.gameState = 'PLAYING';
+            }
+        }
+        else if (this.gameState === 'GAMEOVER') {
+            this.drawGameOver();
+            if (inputUp) this.gameOverCursor = Math.max(0, this.gameOverCursor - 1);
+            if (inputDown) this.gameOverCursor = Math.min(1, this.gameOverCursor + 1);
+            if (inputEnter) {
+                if (this.gameOverCursor === 0) {
+                    this.initPlayersData();
+                    this.loadPlayerState(0);
+                    this.gameState = 'PLAYING';
+                } else {
+                    this.gameState = 'MENU';
+                    this.menuCursor = 0;
+                }
+            }
         }
         requestAnimationFrame(this.loop.bind(this));
     }
@@ -357,9 +539,10 @@ class Game
             if(isActive && this.state.userInput.paddleRight) this.state.userInput.paddleRight=false;
             this.state.userInput.paddleLeft=isActive;
         }
-        else if(evt.key===' '||evt.code==='Space') {
-            this.state.userInput.space = isActive;
-        }
+        else if(evt.key==='Up'||evt.key==='ArrowUp') { this.state.userInput.up = isActive; }
+        else if(evt.key==='Down'||evt.key==='ArrowDown') { this.state.userInput.down = isActive; }
+        else if(evt.key===' '||evt.code==='Space') { this.state.userInput.space = isActive; }
+        else if(evt.key==='Enter') { this.state.userInput.enter = isActive; }
     }
 }
 

@@ -1,11 +1,11 @@
 import MovingObject from "./MovingObject";
 import CustomMath from "./CustomMath";
 import Vector from "./DataType/Vector";
-import theGame from "./Game"; // Nécessaire pour accéder au contexte
+import theGame from "./Game";
 
 export default class Ball extends MovingObject
 {
-    isPenetrating = false;
+    isPenetrating = false; // Nouvelle propriété
     isStuck = false;
     stuckOffset = 0;
 
@@ -30,25 +30,23 @@ export default class Ball extends MovingObject
         const centerY = this.position.y + this.size.height / 2;
         const radius = this.size.width / 2;
 
-        // Couleur : Rouge si pénétrante, Blanche sinon
+        // VISUEL : Rouge si perforante, Blanc sinon
         const mainColor = this.isPenetrating ? "#ff3333" : "#ffffff";
 
         // Effet de halo (Glow)
-        ctx.shadowBlur = 10;
+        ctx.shadowBlur = this.isPenetrating ? 20 : 10; // Glow plus fort si perforante
         ctx.shadowColor = mainColor;
 
-        // Dégradé radial pour faire une sphère
         const gradient = ctx.createRadialGradient(centerX, centerY, radius * 0.2, centerX, centerY, radius);
-        gradient.addColorStop(0, "#fff");       // Centre blanc pur
-        gradient.addColorStop(0.5, mainColor);  // Couleur principale
-        gradient.addColorStop(1, "rgba(0,0,0,0)"); // Bord transparent
+        gradient.addColorStop(0, "#fff");
+        gradient.addColorStop(0.5, mainColor);
+        gradient.addColorStop(1, "rgba(0,0,0,0)");
 
         ctx.fillStyle = gradient;
         ctx.beginPath();
         ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
         ctx.fill();
 
-        // Reset
         ctx.shadowBlur = 0;
     }
 }
